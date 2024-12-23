@@ -3,12 +3,17 @@ import {
   Links,
   Meta,
   Outlet,
+  redirect,
   Scripts,
   ScrollRestoration,
+  type LoaderFunctionArgs,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import stylesheet from "./app.css?url";
+import { authCookieSessionStorage } from "./utils/auth-session.server";
+
+const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password"];
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,6 +28,19 @@ export const links: Route.LinksFunction = () => [
   },
   { rel: "stylesheet", href: stylesheet },
 ];
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const cookieHeader = request.headers.get("cookie");
+
+  const authSession = await authCookieSessionStorage.getSession(cookieHeader);
+
+  const user = authSession.get("user");
+  const pathname = new URL(request.url).pathname;
+
+  if (!user && !PUBLIC_ROUTES.includes(pathname)) {
+    return redirect("/login");
+  }
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
