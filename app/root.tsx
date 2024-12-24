@@ -11,9 +11,10 @@ import {
 
 import type { Route } from "./+types/root";
 import stylesheet from "./app.css?url";
-import { authCookieSessionStorage } from "./utils/auth-session.server";
+import { exchangeAuthCodeForTokens } from "./lib/cognito.server";
+import { authCookieSessionStorage } from "./utils/session.server";
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password"];
+const PUBLIC_ROUTES = ["/login", "/new-password-required", "/forgot-password"];
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -30,16 +31,44 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const cookieHeader = request.headers.get("cookie");
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
 
-  const authSession = await authCookieSessionStorage.getSession(cookieHeader);
+  if (code && state) {
+    try {
+      const cookieHeader = request.headers.get("cookie");
+      const authSession =
+        await authCookieSessionStorage.getSession(cookieHeader);
 
-  const user = authSession.get("user");
-  const pathname = new URL(request.url).pathname;
+      const oauthState = authSession.get("oauth_state");
+      const tokens = await exchangeAuthCodeForTokens(url, oauthState);
 
-  if (!user && !PUBLIC_ROUTES.includes(pathname)) {
-    return redirect("/login");
+      console.log(tokens);
+      authSession.set("tokens", tokens);
+
+      return redirect("/", {
+        headers: {
+          "Set-Cookie":
+            await authCookieSessionStorage.commitSession(authSession),
+        },
+      });
+    } catch (error) {
+      console.error("Token exchange failed:", error);
+      return redirect("/login");
+    }
   }
+
+  // const cookieHeader = request.headers.get("cookie");
+
+  // const authSession = await authCookieSessionStorage.getSession(cookieHeader);
+
+  // const user = authSession.get("user");
+  // const pathname = new URL(request.url).pathname;
+
+  // if (!user && !PUBLIC_ROUTES.includes(pathname)) {
+  //   return redirect("/login");
+  // }
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
